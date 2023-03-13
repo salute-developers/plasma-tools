@@ -5,7 +5,7 @@ import { formatISO } from 'date-fns';
 import { Dependency, Dependent, FindResult } from './find-dependents';
 import path from 'path';
 import chalk from 'chalk';
-import { readPipe, RepoInfo } from '../utils';
+import { median, range, mean, mode, min, max, readPipe, RepoInfo } from '../utils';
 
 
 export default class ReportDependents extends Command {
@@ -20,7 +20,8 @@ export default class ReportDependents extends Command {
     // TODO: implement flag
     // repo: Flags.boolean({ description: 'include git repository info', default: true }),
     date: Flags.string({ description: 'Date in format: "YYYY-MM-DD" when report was collected'}),
-    outDir: Flags.directory({ description: 'Directory to put reports, use with type="json"', aliases:['outdir']})
+    outDir: Flags.directory({ description: 'Directory to put reports, use with type="json"', aliases:['outdir']}),
+    stats: Flags.boolean({ description: 'Add stats to type="txt"' }),
   }
   
   public async run(): Promise<void> {
@@ -52,6 +53,7 @@ export default class ReportDependents extends Command {
 
     let total = 0;
 
+    const dependencies: Dependency[] = [];
     for (const found of res) {    
         const repoInfo = found!.repoInfo;
         const dependents = found!.matchedDependents;
@@ -72,6 +74,7 @@ export default class ReportDependents extends Command {
             for (const dep of dependent.matched) {
               // TODO: color for substring that matched : `@salutejs/${chalk.green(plasma-ui)}`
               this.log(chalk.yellow(dep.depName), dep.depVersion, chalk.gray(dep.depType));
+              dependencies.push(dep);
             }
             this.log();
           }
@@ -99,7 +102,24 @@ export default class ReportDependents extends Command {
     }
     
     if (flags.type === 'txt') {
-      this.log('Total found', chalk.green(total));
+
+      if (flags.stats) {
+        const clean = dependencies.filter(dep => dep.depVersion !== '*');
+        // TODO: group by major and then stats
+        const minors = clean.map(d => d.minor || 0).filter(Boolean).sort((a,b) => a - b);
+
+        this.log('dependencies minor stats ( exlcude "*"):');
+        this.log(`length: ${minors.length} `);
+        this.log(`range:  ${range(minors)} `);
+        this.log(`median: ${median(minors)} `);
+        this.log(`mean:   ${mean(minors)} `);
+        this.log(`mode:   ${mode(minors)} `);
+        this.log(`min:    ${min(minors)} `);
+        this.log(`max:    ${max(minors)} `);
+        this.log();
+      }
+
+      this.log('Total dependents found', chalk.green(total));
     }
   }
 }

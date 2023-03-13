@@ -93,4 +93,45 @@ export interface RepoInfo {
     return stdout.replace(/.*:(.+)\..*/, "$1");
   }
   
-  
+  /** only for sorted arr */
+export function median(arr: number[]) {
+    const half = Math.floor(arr.length / 2);
+
+    if (arr.length % 2) {
+        return arr[half];
+    }
+
+    return (arr[half - 1] + arr[half]) / 2.0;
+}
+
+export function mean(arr: number[]) {
+    return Math.floor(arr.reduce((acc, el) => {
+        return acc += el;
+    }, 0) / arr.length);
+}
+
+/** assume numbers are less then 1000 */
+export function mode(arr: number[]) {
+    const freq = new Array(1000).fill(0);
+
+    for (const el of arr) {
+        freq[el]++;
+    }
+
+    return freq.reduce((prevIx, el, ix, arr) => {
+        return arr[prevIx] > el ? prevIx : ix
+    }, 0);
+}
+
+/** only for sorted arr */
+export function range(arr: number[]) {
+    return arr[arr.length - 1] - arr[0];
+}
+
+export function min(arr: number[]) {
+    return Math.min(...arr);
+}
+
+export function max(arr: number[]) {
+    return Math.max(...arr);
+}
