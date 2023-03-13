@@ -51,19 +51,25 @@ export default class ReportDependents extends Command {
       this.exit(1);
     }
 
-    let total = 0;
-
-    const dependencies: Dependency[] = [];
-    for (const found of res) {    
-        const repoInfo = found!.repoInfo;
-        const dependents = found!.matchedDependents;
-
-        if (!dependents.length) {
-          continue;
-        }
-        total += dependents.length;
     
-        if (flags.type === 'txt') {
+    if (flags.type === 'json') {
+      await writeJSONReports(outputDir, res, date, this);
+    }
+    
+    if (flags.type === 'txt') {
+      let total = 0;
+      const dependencies: Dependency[] = [];
+
+      for (const found of res) {    
+          const repoInfo = found!.repoInfo;
+          const dependents = found!.matchedDependents;
+
+          if (!dependents.length) {
+            continue;
+          }
+          total += dependents.length;
+      
+        
           this.log();
           this.log('repo info:', chalk.green(repoInfo.repository), repoInfo.sha, repoInfo.shaDate, repoInfo.shaTimestamp);
           this.log('Found dependents:', chalk.yellow(dependents.length));
@@ -78,31 +84,8 @@ export default class ReportDependents extends Command {
             }
             this.log();
           }
-        }
+      }
     
-        if (flags.type === 'json') {
-          const records: Record[] = dependents.flatMap(dependent => {
-            const { matched, ...rest} = dependent;
-            return matched.map(dep => ({
-              ...repoInfo,
-              ...rest,
-              ...dep,
-              date
-            }));
-          });
-    
-          const outputName = `dependents-${repoInfo.repository.replace('/', '_')}-${date}-${repoInfo.sha}.json`;
-          const outputPath = path.join(outputDir, outputName);
-          
-          await fs.ensureDir(outputDir);
-          await fs.writeJSON(outputPath, records);
-          this.log('write to ' + outputPath);
-        }
-
-    }
-    
-    if (flags.type === 'txt') {
-
       if (flags.stats) {
         const clean = dependencies.filter(dep => dep.depVersion !== '*');
         // TODO: group by major and then stats
@@ -121,6 +104,35 @@ export default class ReportDependents extends Command {
 
       this.log('Total dependents found', chalk.green(total));
     }
+  }
+}
+
+export async function writeJSONReports(outputDir:string, res: FindResult, date: string, logger: { log: Command['log'] }) {
+  
+  for (const found of res) {    
+    const repoInfo = found!.repoInfo;
+    const dependents = found!.matchedDependents;
+
+    if (!dependents.length) {
+      continue;
+    }
+    
+    const records: Record[] = dependents.flatMap(dependent => {
+      const { matched, ...rest} = dependent;
+      return matched.map(dep => ({
+        ...repoInfo,
+        ...rest,
+        ...dep,
+        date
+      }));
+    });
+
+    const outputName = `dependents-${repoInfo.repository.replace('/', '_')}-${date}-${repoInfo.sha}.json`;
+    const outputPath = path.join(outputDir, outputName);
+    
+    await fs.ensureDir(outputDir);
+    await fs.writeJSON(outputPath, records);
+    logger.log('write to ' + outputPath);
   }
 }
 

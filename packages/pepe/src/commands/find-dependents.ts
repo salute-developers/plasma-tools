@@ -16,7 +16,7 @@ interface LernaConf {
   "packages"?: Array<pttrn>;
 }
 
-interface Query {
+export interface Query {
   exact: boolean;
   exclude?: string;
   depNames: string[];
@@ -79,7 +79,7 @@ export default class FindDependents extends Command {
     }))).flat()
 
     const found = await Promise.all(possibleProjectsPath.map(projectPath => {
-      return this.searchProject(projectPath, query)
+      return searchProject(projectPath, query, this)
     }));
 
     this.log();
@@ -88,8 +88,11 @@ export default class FindDependents extends Command {
     return found;
   }
 
+
+}
+
   // TODO: logs should be grouped by projectPath
-  protected async searchProject(projectPath:string, query: Query): Promise<Found> {
+export async function searchProject(projectPath:string, query: Query, logger: { log: Command['log'] }): Promise<Found> {
     // TODO: exact & exclude
     const { depNames } = query;
 
@@ -99,7 +102,7 @@ export default class FindDependents extends Command {
 
     const isRootPckg = await fs.pathExists(path.join(projectPath, 'package.json'));
     if (isRootPckg) {
-        this.log(chalk.gray(projectPath), `Searching in root ${chalk.yellow('package.json')}`);
+      logger.log(chalk.gray(projectPath), `Searching in root ${chalk.yellow('package.json')}`);
         pttrns.push('.');
     }
 
@@ -110,12 +113,12 @@ export default class FindDependents extends Command {
         const lernaConf: LernaConf = await fs.readJSON(path.join(projectPath, 'lerna.json'));
         const lernaPttrns = lernaConf.packages || ['packages/*'];
 
-        this.log(chalk.gray(projectPath), `Searching in [ ${chalk.yellow(lernaPttrns.join(' '))} ]`);
+        logger.log(chalk.gray(projectPath), `Searching in [ ${chalk.yellow(lernaPttrns.join(' '))} ]`);
         pttrns.push(...lernaPttrns);
     }
 
     if (!pttrns.length) {
-        this.log(chalk.gray(projectPath), 'No package.json detected, try another directory ( use --project-path)');
+      logger.log(chalk.gray(projectPath), 'No package.json detected, try another directory ( use --project-path)');
         return {
           projectPath,
           repoInfo,
@@ -128,7 +131,7 @@ export default class FindDependents extends Command {
 
     for (const pttrn of pttrns) {
         const pkgFileNames = await glob(path.join(projectPath, pttrn, 'package.json'), { deep: 2 })
-        this.log(chalk.gray(projectPath), `found packages at ${pttrn}: ${pkgFileNames.length}`);
+        logger.log(chalk.gray(projectPath), `found packages at ${pttrn}: ${pkgFileNames.length}`);
 
         pkgFileNamesToProcess.push(...pkgFileNames);
     }
@@ -145,10 +148,10 @@ export default class FindDependents extends Command {
         // @scope/foo-bar => foo-bar
         const dependentName = pkg.name.split('/').pop()!;
 
-        this.config.debug && console.log({
-            dependentPath,
-            dependentName,
-        });
+        // this.config.debug && console.log({
+        //     dependentPath,
+        //     dependentName,
+        // });
 
         const deps: Array<Dependency> = [];
 
@@ -157,7 +160,7 @@ export default class FindDependents extends Command {
         deps.push(...collectDeps('peerDep', pkg.peerDependencies).map(addSemver));
 
         const depsMap = deps.reduce((acc, el) => acc.set(el.depName, el), new Map());
-        this.config.debug && console.log(`Collected deps: ${deps.length}`);
+        // this.config.debug && console.log(`Collected deps: ${deps.length}`);
 
         const matched = mm(deps.map(({ depName }) => depName), depNames, { basename: true }).map((depName) => depsMap.get(depName));
 
@@ -169,8 +172,8 @@ export default class FindDependents extends Command {
     }
 
     
-    this.log();
-    this.log(chalk.gray(projectPath), 'found dependents:', chalk.green(matchedDependents.length));
+    logger.log();
+    logger.log(chalk.gray(projectPath), 'found dependents:', chalk.green(matchedDependents.length));
 
     // TODO: add flag to write to file or stdout or prettyprint ( write now => --json)
     // TODO: add `clean` command
@@ -188,8 +191,6 @@ export default class FindDependents extends Command {
       matchedDependents
     }
   }
-}
-
 
 
 export interface Found {

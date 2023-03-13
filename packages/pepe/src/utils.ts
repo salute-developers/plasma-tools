@@ -78,7 +78,19 @@ export interface RepoInfo {
   
     return stdout;
   }
-  
+
+  export async function getSHABeforeForDate(cwd: string, date: string) {
+    const { stdout } = await execa('git', ['rev-list', '--max-count=1', `--before=${date}`, 'origin/master'], { cwd });
+
+    return stdout;
+  }
+
+  export async function checkout(cwd: string, sha: string, force: boolean = false) {
+    const { stdout } = await execa('git', ['checkout', sha, force ? '--force' : ''], { cwd });
+
+    return stdout;
+  }
+
   async function getRepo(cwd: string) {
     const { stdout } = await execa('git', ['remote', 'get-url', 'origin'], { cwd });
   
