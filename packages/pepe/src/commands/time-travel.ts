@@ -18,6 +18,7 @@ export default class TimeTravel extends Command {
 
   static flags = {
     // TODO: maybe not only once week
+    // TODO: start=Date.now()
     periods: Flags.integer({ description: 'periouds to collect info, calls find & report inside', default: 25 }),
 
     exact: Flags.boolean({ description: 'use exact names of packages, not partial match' }),
@@ -54,13 +55,7 @@ export default class TimeTravel extends Command {
       return isDynamicPattern(projectPath) ? glob(projectPath, { deep: 1, onlyDirectories: true }) : projectPath;
     }))).flat()
 
-    let i = 0;
     for (const period of periods) {
-      i++;
-      if (i <= 8) {        
-        continue;
-      }
-
       const search = [];
 
       for (const projectPath of possibleProjectsPath) {
