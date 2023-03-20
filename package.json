@@ -1,10 +1,28 @@
 {
   "name": "root",
   "private": true,
+  "author": "Salute Frontend Team <salute.developers@gmail.com>",
   "workspaces": [
     "packages/*"
   ],
   "devDependencies": {
+    "@auto-it/conventional-commits": "^10.43.0",
+    "@auto-it/npm": "^10.43.0",
+    "auto": "^10.43.0",
     "lerna": "^6.5.1"
+  },
+  "scripts": {
+    "release": "git diff && auto shipit"
+  },
+  "auto": {
+    "plugins": [
+      [
+        "npm",
+        {
+          "setRcToken": false
+        }
+      ],
+      "conventional-commits"
+    ]
   }
 }
