@@ -10,12 +10,18 @@
     "@auto-it/npm": "^10.43.0",
     "@commitlint/cli": "^17.4.4",
     "@commitlint/config-conventional": "^17.4.4",
+    "@salutejs/eslint-config": "1.2.0",
+    "@salutejs/stylelint-config": "0.8.0",
     "auto": "^10.43.0",
+    "eslint": "8.36.0",
+    "eslint-plugin-jest": "27.2.1",
     "husky": "^8.0.3",
     "lerna": "^6.5.1",
-    "lint-staged": "^13.2.0"
+    "lint-staged": "^13.2.0",
+    "stylelint": "15.3.0"
   },
   "scripts": {
+    "lint": "eslint --ext .js,.ts,.tsx .",
     "prepare": "test ! -n \"$CI\" && husky install || echo skip husky",
     "release": "git diff && auto shipit"
   },

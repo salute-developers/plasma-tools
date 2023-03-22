@@ -1,13 +1,8 @@
 {
     "*.{js,jsx,ts,tsx}": [
-        "echo eslint --fix",
-        "echo prettier --write",
+        "eslint --fix"
     ],
     "*.{jsx,tsx}": [
-        "echo stylelint",
-    ],
-    "*.md": [
-        "echo prettier --write --parser markdown",
-        "echo git add"
+        "stylelint"
     ]
 }
