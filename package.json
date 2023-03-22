@@ -8,10 +8,15 @@
   "devDependencies": {
     "@auto-it/conventional-commits": "^10.43.0",
     "@auto-it/npm": "^10.43.0",
+    "@commitlint/cli": "^17.4.4",
+    "@commitlint/config-conventional": "^17.4.4",
     "auto": "^10.43.0",
-    "lerna": "^6.5.1"
+    "husky": "^8.0.3",
+    "lerna": "^6.5.1",
+    "lint-staged": "^13.2.0"
   },
   "scripts": {
+    "prepare": "test ! -n \"$CI\" && husky install || echo skip husky",
     "release": "git diff && auto shipit"
   },
   "auto": {
