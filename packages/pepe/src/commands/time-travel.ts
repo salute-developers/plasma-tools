@@ -1,3 +1,5 @@
+/* eslint-disable no-use-before-define, no-continue, no-await-in-loop */
+
 import { Args, Command, Flags } from '@oclif/core';
 import path from 'path';
 import { subWeeks, formatISO, parseISO } from 'date-fns';
