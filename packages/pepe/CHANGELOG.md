@@ -1,3 +1,22 @@
+# v0.3.0 (Tue Mar 28 2023)
+
+#### 🚀 Enhancement
+
+- feat(pepe-silvia): add periods to merge-reports command [#4](https://github.com/salute-developers/plasma-tools/pull/4) ([@Yeti-or](https://github.com/Yeti-or))
+- feat(pepe-silvia): add periods to merge-reports command ([@Yeti-or](https://github.com/Yeti-or))
+
+#### 🐛 Bug Fix
+
+- build: configure eslint [#5](https://github.com/salute-developers/plasma-tools/pull/5) ([@Yeti-or](https://github.com/Yeti-or))
+- build: configure eslint ([@Yeti-or](https://github.com/Yeti-or))
+- build(pepe-silvia): temporary remove tests ([@Yeti-or](https://github.com/Yeti-or))
+
+#### Authors: 1
+
+- Vasiliy ([@Yeti-or](https://github.com/Yeti-or))
+
+---
+
 # v0.2.0 (Mon Mar 27 2023)
 
 #### 🚀 Enhancement
