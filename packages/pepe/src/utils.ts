@@ -1,6 +1,7 @@
 /* eslint-disable no-use-before-define,  no-irregular-whitespace */
 
 import execa from 'execa';
+import semver from 'semver';
 import { formatISO, subWeeks } from 'date-fns';
 
 export async function readPipe() {
@@ -188,4 +189,43 @@ export function stringifyReportName(reportInfo: reportInfo): string {
 
 export function getPeriods(date: Date, periods: number): string[] {
     return Array.from(Array(periods), (_, i) => formatISO(subWeeks(date, i), { representation: 'date' }));
+}
+
+// Packages
+
+const cache: Record<string, Record<string, string>> = {};
+// TODO: refactor
+// probably we need to go to npm.js not to use execa
+export function getStableVersionsByDate(packageName: string) {
+    if (cache[packageName]) {
+        return cache[packageName];
+    }
+
+    const params = ['time', '--json'];
+    // npm info @salutejs/plasma-ui time --json
+    const { stdout } = execa.sync('npm', ['info'].concat(packageName, params));
+
+    // TODO: catch errors
+    const data = JSON.parse(stdout);
+    // console.log(data);
+
+    // return data;
+
+    const res: Record<string, string> = {};
+
+    Object.keys(data).forEach((key) => {
+        // skip canary versions
+        const version = semver.parse(key);
+
+        // if (version && version.prerelease.length === 0) {
+        // TODO: why do we have version 2 ??
+        if (version && version.major === 1) {
+            res[key] = data[key];
+        }
+        // }
+    });
+
+    cache[packageName] = res;
+
+    return res;
 }
