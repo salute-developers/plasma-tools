@@ -1,6 +1,7 @@
 /* eslint-disable no-use-before-define,  no-irregular-whitespace */
 
 import execa from 'execa';
+import { formatISO, subWeeks } from 'date-fns';
 
 export async function readPipe() {
     const stream = process.stdin;
@@ -144,4 +145,47 @@ export function min(arr: number[]) {
 
 export function max(arr: number[]) {
     return Math.max(...arr);
+}
+
+// report helpers
+
+const reportPrefix = 'dependents-';
+/**
+ * reportName – dependents-sberdevices-frontend_awsdk-qa-apps-2023-01-23-3fac980.json
+ */
+export function parseReportName(reportName: string): reportInfo {
+    const params = reportName
+        .replace(reportPrefix, '') // remove prefix
+        .replace(/\..+/, ''); // remove extension
+
+    const parts = params.split('-');
+
+    const sha = parts.pop()!;
+    const date = parts.slice(-3).join('-');
+    // TODO: use better delimeter for easier parsing
+    const repoName = parts.slice(0, -3).join('-').split('_').join('/');
+
+    return {
+        repoName,
+        date,
+        sha,
+    };
+}
+
+export interface reportInfo {
+    repoName: string;
+    date: string;
+    sha: string;
+}
+
+export function stringifyReportName(reportInfo: reportInfo): string {
+    const { repoName, date, sha } = reportInfo;
+
+    return `${reportPrefix}${repoName.replace('/', '_')}-${date}-${sha}`;
+}
+
+// Periods
+
+export function getPeriods(date: Date, periods: number): string[] {
+    return Array.from(Array(periods), (_, i) => formatISO(subWeeks(date, i), { representation: 'date' }));
 }

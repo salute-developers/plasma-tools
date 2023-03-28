@@ -2,16 +2,16 @@
 
 import { Args, Command, Flags } from '@oclif/core';
 import path from 'path';
-import { subWeeks, formatISO, parseISO } from 'date-fns';
+import { formatISO, parseISO } from 'date-fns';
 import glob, { isDynamicPattern } from 'fast-glob';
 
-import { checkout, getSHABeforeForDate } from '../utils';
+import { checkout, getPeriods, getSHABeforeForDate } from '../utils';
 
 import { Query, searchProject } from './find-dependents';
 import { writeJSONReports } from './report-dependents';
 
 export default class TimeTravel extends Command {
-    static description = 'describe the command here';
+    static description = 'Travel through git repos and collect dependents in time';
 
     static examples = ['<%= config.bin %> <%= command.id %>'];
 
@@ -48,10 +48,7 @@ export default class TimeTravel extends Command {
 
         // TODO: validate Date format
         const dateToBeginTravel = parseISO(dateToTravel);
-
-        const periods = Array.from(Array(flags.periods), (_, i) =>
-            formatISO(subWeeks(dateToBeginTravel, i), { representation: 'date' }),
-        );
+        const periods = getPeriods(dateToBeginTravel, flags.periods);
 
         const depNames = argv as string[];
 

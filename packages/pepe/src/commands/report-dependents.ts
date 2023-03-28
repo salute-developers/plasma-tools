@@ -6,7 +6,7 @@ import { formatISO } from 'date-fns';
 import path from 'path';
 import chalk from 'chalk';
 
-import { median, range, mean, mode, min, max, readPipe, RepoInfo } from '../utils';
+import { median, range, mean, mode, min, max, readPipe, RepoInfo, stringifyReportName } from '../utils';
 
 import { Dependency, Dependent, FindResult } from './find-dependents';
 
@@ -136,7 +136,7 @@ export async function writeJSONReports(
             }));
         });
 
-        const outputName = `dependents-${repoInfo.repository.replace('/', '_')}-${date}-${repoInfo.sha}.json`;
+        const outputName = `${stringifyReportName({ repoName: repoInfo.repository, date, sha: repoInfo.sha })}.json`;
         const outputPath = path.join(outputDir, outputName);
 
         await fs.ensureDir(outputDir);
