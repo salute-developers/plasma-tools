@@ -21,7 +21,7 @@
     "stylelint": "15.3.0"
   },
   "scripts": {
-    "lint": "eslint --ext .js,.ts,.tsx .",
+    "lint": "lerna run lint",
     "prepare": "test ! -n \"$CI\" && husky install || echo skip husky",
     "release": "git diff && auto shipit"
   },

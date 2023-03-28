@@ -1,11 +1,12 @@
-import { Args, Command, Flags } from '@oclif/core'
+/* eslint-disable */
+// TODO: smthing wrong with @typescript-eslint/typescript-estree
 
+import { Args, Command, Flags } from '@oclif/core';
 import path from 'path';
 import fs from 'fs-extra';
 import chalk from 'chalk';
 import glob, { isDynamicPattern } from 'fast-glob';
 import mm from 'micromatch';
-
 import semver from 'semver';
 import { getRepoInfo, RepoInfo } from '../utils';
 
