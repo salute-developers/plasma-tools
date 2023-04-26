@@ -229,3 +229,9 @@ export function getStableVersionsByDate(packageName: string) {
 
     return res;
 }
+
+
+export async function installPackages(packages: string[], servicePath: string) {
+  const flags = ['--no-save', '--no-package-lock', '--no-fund', '--ignore-scripts', '--no-audit'];
+  await execa('npm', ['install'].concat(flags, packages), { cwd: servicePath, stdio: 'inherit' });
+}

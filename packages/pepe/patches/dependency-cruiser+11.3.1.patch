@@ -1,0 +1,356 @@
+diff --git a/node_modules/dependency-cruiser/src/enrich/enrich-modules.js b/node_modules/dependency-cruiser/src/enrich/enrich-modules.js
+index 12a7147..cedef53 100644
+--- a/node_modules/dependency-cruiser/src/enrich/enrich-modules.js
++++ b/node_modules/dependency-cruiser/src/enrich/enrich-modules.js
+@@ -28,6 +28,22 @@ module.exports = function enrichModules(pModules, pOptions) {
+   });
+   lModules = addFocus(lModules, _get(pOptions, "focus"));
+ 
++
++  // Move exported parts up
++  traverseDown(lModules);
++
++  // ensure we remove all reExports
++  lModules.forEach(m => {
++      if (m.toRemove !== undefined) {
++          if (m.dependencies.length + m.toRemove <= 0) {
++              m.toRemove = 0;
++          }
++      }
++  });
++
++  // remove modules with reExports
++  lModules = lModules.filter(m => m.toRemove !== 0);
++
+   // when validate === false we might want to skip the addValidations.
+   // We don't at this time, however, as "valid" is a mandatory
+   // attribute (to simplify reporter logic)
+@@ -38,3 +54,106 @@ module.exports = function enrichModules(pModules, pOptions) {
+ 
+   return lModules;
+ };
++
++
++
++function getModulesMap(modules) {
++    return modules.reduce((acc, el) => {
++        if (acc.has(el.source)) {
++            acc.set(el.source, acc.get(el.source).concat(el));
++        } else {
++            acc.set(el.source, [el]);
++        }
++        return acc;
++    }, new Map());
++}
++
++function traverseDown(
++    modules,
++    cache = getModulesMap(modules),
++    prevModule = { dependencies: [], source: '[root]' },
++    visited = new Set()
++) {
++
++    visited.add(prevModule.source);
++
++    modules.forEach(m => {
++
++        // traverse all dependencies first so we could collect imports before moving them up
++        !visited.has(m.source) && traverseDown(
++            m
++                .dependencies
++                .map(d => cache.get(d.resolved)[0])
++            ,cache,
++            m,
++            visited
++        );
++
++        prevModule.dependencies = prevModule.dependencies.reduce((acc, prevDep) => {
++            if (prevDep.resolved !== m.source) {
++                // another dependency not current module
++                acc.push(prevDep);
++                return acc;
++            }
++
++            if (!m.exports) {
++                // externel dependency
++                acc.push(prevDep);
++                return acc;
++            }
++
++            if (!prevDep.imports) {
++                // TODO: CJS modules, typescript, amd
++                acc.push(prevDep);
++                return acc;
++            }
++
++            if (m.exports.parts.length > 0 || m.exports.defaultName) {
++                // TODO: default import
++                acc.push(prevDep);
++                // move all imported parts up and keep module
++                if (prevDep.imports.all) {
++                    m.exports.parts.forEach(exportedPart => {
++                        const { exported } = exportedPart;
++
++                        prevDep.imports.parts.push({
++                            imported: exported,
++                            exported,
++                        });
++                    });
++                }
++
++            } else {
++
++                // move everything that prevDep imports
++                // if everything from module is moved up we could delete it
++                if (prevDep.imports.parts.length > 0) {
++                    prevDep.imports.parts.forEach(prevDepImportPart => {
++                        const { imported } = prevDepImportPart;
++
++                        const foundDeps = m.dependencies.filter(d => {
++                            return d.imports && d.imports.parts.some(part => part.exported === imported);
++                        });
++
++                        acc.push(...foundDeps);
++                        if (m.toRemove === undefined) {
++                            m.toRemove = -foundDeps.length;
++                        } else {
++                            m.toRemove = m.toRemove - foundDeps.length;
++                        }
++                    });
++
++                // TODO: default import
++                } else {
++                    // move all dependencies up
++                    // we could delete module from graph
++                    // cause it has only reexports
++                    acc.push(...m.dependencies);
++                    m.toRemove = 0;
++                }
++            }
++
++            return acc;
++        }, []);
++    });
++}
+diff --git a/node_modules/dependency-cruiser/src/extract/ast-extractors/extract-es6-deps.js b/node_modules/dependency-cruiser/src/extract/ast-extractors/extract-es6-deps.js
+index 2e56e42..5d08cfc 100644
+--- a/node_modules/dependency-cruiser/src/extract/ast-extractors/extract-es6-deps.js
++++ b/node_modules/dependency-cruiser/src/extract/ast-extractors/extract-es6-deps.js
+@@ -24,16 +24,108 @@ function pushImportNodeValue(pDependencies) {
+   };
+ }
+ 
+-module.exports = function extractES6Dependencies(pAST, pDependencies) {
++module.exports = function extractES6Dependencies(pAST, pDependencies, exports) {
+   function pushSourceValue(pNode) {
+     if (pNode.source && pNode.source.value) {
+-      pDependencies.push({
++      const dep = {
+         module: pNode.source.value,
+         moduleSystem: "es6",
+         dynamic: false,
+         exoticallyRequired: false,
+-      });
++        imports: {
++            sideEffects: false,
++            parts: [],
++            defaultName: '',
++            reExport: false,
++            all: false,
++            allLocal: '',
++        },
++      };
++
++      if (pNode.type === 'ImportDeclaration') {
++          if (pNode.specifiers.length === 0) {
++              dep.imports.sideEffects = true;
++          } else {
++              pNode.specifiers.forEach(specifier => {
++                  if (specifier.type === 'ImportDefaultSpecifier') {
++                      dep.imports.defaultName = specifier.local.name;
++                  }
++
++                  if (specifier.type === 'ImportSpecifier') {
++                      dep.imports.parts.push({
++                          imported: specifier.imported.name,
++                          local: specifier.local.name,
++                      });
++                  }
++
++                  if (specifier.type === 'ImportNamespaceSpecifier') {
++                      dep.imports.all = true;
++                      dep.imports.allLocal = specifier.local.name;
++                  }
++              });
++          }
++      }
++
++      if (pNode.type === 'ExportAllDeclaration') {
++          dep.imports.reExport = true;
++          dep.imports.all = true;
++          exports.hasReExports = true;
++
++          if (pNode.exported !== null) {
++              dep.imports.allLocal = pNode.exported.name;
++          }
++      }
++
++      if (pNode.type === 'ExportNamedDeclaration') {
++          dep.imports.reExport = true;
++          exports.hasReExports = true;
++
++          pNode.specifiers.forEach(specifier => {
++              dep.imports.parts.push({
++                  imported: specifier.local.name,
++                  exported: specifier.exported.name,
++              });
++          });
++      }
++
++      pDependencies.push(dep);
++    } else {
++
++        if (pNode.type === 'ExportNamedDeclaration') {
++
++            if (pNode.specifiers.length) {
++              pNode.specifiers.forEach(specifier => {
++                  exports.parts.push({
++                    local: specifier.local.name,
++                    exported: specifier.exported.name,
++                  });
++              });
++            } else {
++                const { declaration } = pNode;
++
++                if (declaration.type === 'VariableDeclaration') {
++                    declaration.declarations.forEach(declarator => {
++                        exports.parts.push({
++                            local: declarator.id.name,
++                            exported: declarator.id.name,
++                        });
++                    });
++                }
++
++                if (declaration.type === 'FunctionDeclaration' || declaration.type === 'ClassDeclaration') {
++                    exports.parts.push({
++                        local: declaration.id.name,
++                        exported: declaration.id.name,
++                    });
++                }
++            }
++        }
++
++        if (pNode.type === 'ExportDefaultDeclaration') {
++            exports.defaultName = true;
++        }
+     }
++
+   }
+ 
+   walk.simple(
+@@ -43,6 +135,7 @@ module.exports = function extractES6Dependencies(pAST, pDependencies) {
+       ImportExpression: pushImportNodeValue(pDependencies),
+       ExportAllDeclaration: pushSourceValue,
+       ExportNamedDeclaration: pushSourceValue,
++      ExportDefaultDeclaration: pushSourceValue,
+     },
+     // see https://github.com/acornjs/acorn/issues/746
+     walk.base
+diff --git a/node_modules/dependency-cruiser/src/extract/get-dependencies.js b/node_modules/dependency-cruiser/src/extract/get-dependencies.js
+index 253e65e..2466bf5 100644
+--- a/node_modules/dependency-cruiser/src/extract/get-dependencies.js
++++ b/node_modules/dependency-cruiser/src/extract/get-dependencies.js
+@@ -53,7 +53,7 @@ function shouldUseSwc(pOptions, pFileName) {
+   );
+ }
+ 
+-function extractFromJavaScriptAST(pOptions, pFileName, pTranspileOptions) {
++function extractFromJavaScriptAST(pOptions, pFileName, pTranspileOptions, exports) {
+   let lDependencies = [];
+   const lAST = toJavascriptAST.getASTCached(
+     path.join(pOptions.baseDir, pFileName),
+@@ -69,7 +69,7 @@ function extractFromJavaScriptAST(pOptions, pFileName, pTranspileOptions) {
+     );
+   }
+   if (pOptions.moduleSystems.includes("es6")) {
+-    extractES6Deps(lAST, lDependencies);
++    extractES6Deps(lAST, lDependencies, exports);
+   }
+   if (pOptions.moduleSystems.includes("amd")) {
+     extractAMDDeps(lAST, lDependencies, pOptions.exoticRequireStrings);
+@@ -113,7 +113,7 @@ function extractWithTsc(
+  * @param {any} pTranspileOptions
+  * @returns {Partial<import('../../types/cruise-result').IDependency[]>}
+  */
+-function extractDependencies(pCruiseOptions, pFileName, pTranspileOptions) {
++function extractDependencies(pCruiseOptions, pFileName, pTranspileOptions, exports) {
+   /** @type Partial<import('../../types/cruise-result').IDependency[]> */
+   let lDependencies = [];
+ 
+@@ -131,7 +131,8 @@ function extractDependencies(pCruiseOptions, pFileName, pTranspileOptions) {
+       lDependencies = extractFromJavaScriptAST(
+         pCruiseOptions,
+         pFileName,
+-        pTranspileOptions
++        pTranspileOptions,
++        exports,
+       );
+     }
+   }
+@@ -212,11 +213,12 @@ module.exports = function getDependencies(
+   pFileName,
+   pCruiseOptions,
+   pResolveOptions,
+-  pTranspileOptions
++  pTranspileOptions,
++  exports,
+ ) {
+   try {
+     return _uniqBy(
+-      extractDependencies(pCruiseOptions, pFileName, pTranspileOptions),
++      extractDependencies(pCruiseOptions, pFileName, pTranspileOptions, exports),
+       getDependencyUniqueKey
+     )
+       .sort(compareDeps)
+diff --git a/node_modules/dependency-cruiser/src/extract/index.js b/node_modules/dependency-cruiser/src/extract/index.js
+index 77eb897..c03b94b 100644
+--- a/node_modules/dependency-cruiser/src/extract/index.js
++++ b/node_modules/dependency-cruiser/src/extract/index.js
+@@ -15,13 +15,15 @@ function extractRecursive(
+   pTranspileOptions
+ ) {
+   pVisited.add(pFileName);
++  const exports = { parts: [], defaultName: false, hasReExports: false };
+   const lDependencies =
+     pCruiseOptions.maxDepth <= 0 || pDepth < pCruiseOptions.maxDepth
+       ? getDependencies(
+           pFileName,
+           pCruiseOptions,
+           pResolveOptions,
+-          pTranspileOptions
++          pTranspileOptions,
++          exports
+         )
+       : [];
+ 
+@@ -49,6 +51,7 @@ function extractRecursive(
+         {
+           source: pFileName,
+           dependencies: lDependencies,
++          exports,
+         },
+       ]
+     );
+diff --git a/node_modules/dependency-cruiser/src/main/index.js b/node_modules/dependency-cruiser/src/main/index.js
+index 624aa42..4032a4d 100644
+--- a/node_modules/dependency-cruiser/src/main/index.js
++++ b/node_modules/dependency-cruiser/src/main/index.js
+@@ -34,7 +34,7 @@ function format(pResult, pFormatOptions = {}) {
+   const lFormatOptions = normalizeFormatOptions(pFormatOptions);
+   validateFormatOptions(lFormatOptions);
+ 
+-  validateResultAgainstSchema(pResult);
++  // validateResultAgainstSchema(pResult);
+ 
+   return reportWrap(pResult, lFormatOptions);
+ }
