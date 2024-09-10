@@ -14,7 +14,7 @@ import { Logger } from '@oclif/core/lib/errors';
 /** @example "packages/*", "services/*" */
 type pttrn = string;
 
-interface LernaConf {
+export interface LernaConf {
   "packages"?: Array<pttrn>;
 }
 
@@ -40,6 +40,7 @@ export default class FindDependents extends Command {
   static flags = {
     exact: Flags.boolean({ description: 'use exact names of packages, not partial match' }),
     exclude: Flags.string({ description: 'exclude partical names from match' }),
+    excludeProjects: Flags.string({ multiple: true, description: 'exclude projects names from search' }),
     projectsPath: Flags.string({ multiple: true, description: 'path to projects to search dependents', aliases: ['path-to-project', 'project-path'], default: [process.cwd()] }),
   }
 
@@ -56,6 +57,7 @@ export default class FindDependents extends Command {
     // console.error('ISTTY??');
     // console.error(process.stdout.isTTY);
 
+    const { excludeProjects } = flags;
     
     
     const depNames = argv as string[];
@@ -76,12 +78,14 @@ export default class FindDependents extends Command {
         this.log();
     }
 
+    const excludeProjectsSet = new Set(excludeProjects || [])
+
     const possibleProjectsPath = (await Promise.all(projectsPath.map(projectPath => {
       return isDynamicPattern(projectPath) ? glob(projectPath, { deep: 1, onlyDirectories: true }) : projectPath;
     }))).flat()
 
     const found = await Promise.all(possibleProjectsPath.map(projectPath => {
-      return searchProject(projectPath, query, this)
+      return searchProject(projectPath, query, this, excludeProjectsSet)
     }));
 
     this.log();
@@ -94,13 +98,13 @@ export default class FindDependents extends Command {
 }
 
   // TODO: logs should be grouped by projectPath
-export async function searchProject(projectPath:string, query: Query, logger: { log: Command['log'] }): Promise<Found> {
+export async function searchProject(projectPath:string, query: Query, logger: { log: Command['log'] }, excludeProjects?: Set<string>): Promise<Found> {
     // TODO: exact & exclude
     const { depNames, exact } = query;
 
     const repoInfo = await getRepoInfo(projectPath);
 
-    const pttrns = [];
+    const pttrns:string[] = [];
 
     const isRootPckg = await fs.pathExists(path.join(projectPath, 'package.json'));
     if (isRootPckg) {
@@ -150,6 +154,25 @@ export async function searchProject(projectPath:string, query: Query, logger: { 
         // @scope/foo-bar => foo-bar
         const dependentName = pkg.name.split('/').pop()!;
 
+        let meta: Meta | null = null;
+        try {
+          meta = await fs.readJSON(path.join(path.dirname(pkgFileName), 'meta.json'));
+        } catch (_) {
+          logger.log(chalk.blue('no meta for'), dependentPath);
+        }
+
+        // TODO: is should be excludeProjects or in some config
+        if (meta?.application?.isFreezed) {
+          logger.log(chalk.red('Exclude'), pkg.name);
+          continue;
+        }
+
+
+        if (excludeProjects?.has(pkg.name) || excludeProjects?.has(dependentName)) {
+          logger.log(chalk.red('Exclude'), pkg.name);
+          continue;
+        }
+
         // this.config.debug && console.log({
         //     dependentPath,
         //     dependentName,
@@ -198,6 +221,14 @@ export async function searchProject(projectPath:string, query: Query, logger: { 
     }
   }
 
+
+// TODO: remove me
+  interface Meta {
+    application?: {
+      description: string;
+      isFreezed: boolean;
+    }
+  }
 
 export interface Found {
   projectPath: string;
@@ -278,7 +309,7 @@ function addSemver(dep: Dep, logger: { log: Command['log'] }): Dependency {
 type version = string;
 type dependenciesRecord = Record<string, version>;
 
-interface PkgJSON {
+export interface PkgJSON {
     name: string;
 
     devDependencies?: dependenciesRecord;

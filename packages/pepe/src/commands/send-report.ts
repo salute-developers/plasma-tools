@@ -16,6 +16,14 @@ export default class SendReport extends Command {
 
     static examples = ['<%= config.bin %> <%= command.id %>'];
 
+    // TODO: stats:
+    /*
+        SELECT toDate(originalTimestamp), median(minor)
+        FROM default.pepesilvia 
+        WHERE ( depName IN ('@sberdevices/plasma-ui', '@salutejs/plasma-ui' ) ) AND depVersion != '*'
+        GROUP BY originalTimestamp
+        ORDER BY originalTimestamp
+    */
     static flags = {
         reportDir: Flags.directory({ description: 'Dir to read reports', aliases: ['report-dir'] }),
         date: Flags.string({

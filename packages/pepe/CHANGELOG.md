@@ -1,3 +1,16 @@
+# v0.4.0 (Tue Mar 28 2023)
+
+#### 🚀 Enhancement
+
+- feat(pepe-silvia): add send-report command [#6](https://github.com/salute-developers/plasma-tools/pull/6) ([@Yeti-or](https://github.com/Yeti-or))
+- feat(pepe-silvia): add send-report command ([@Yeti-or](https://github.com/Yeti-or))
+
+#### Authors: 1
+
+- Vasiliy ([@Yeti-or](https://github.com/Yeti-or))
+
+---
+
 # v0.3.0 (Tue Mar 28 2023)
 
 #### 🚀 Enhancement
