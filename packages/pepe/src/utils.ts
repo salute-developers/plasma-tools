@@ -105,6 +105,7 @@ async function getRepo(cwd: string) {
 
 /** only for sorted arr */
 export function median(arr: number[]) {
+    arr = [...arr].sort((a, b) => a - b); 
     const half = Math.floor(arr.length / 2);
 
     if (arr.length % 2) {

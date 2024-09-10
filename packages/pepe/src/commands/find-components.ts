@@ -2,12 +2,36 @@ import fs from 'fs-extra';
 import path from 'path';
 
 import { Args, Command, Flags } from '@oclif/core';
+import semver from 'semver';
 import { Dependency, Dependent, Found, Query, searchProject } from './find-dependents';
 import glob, { isDynamicPattern } from 'fast-glob';
 import chalk from 'chalk';
-import { installPackages, RepoInfo } from '../utils';
+import { installPackages, mean, median, RepoInfo } from '../utils';
 
 import { cruise, format } from 'dependency-cruiser';
+
+
+// TODO: 
+/**
+ * Think about proxy components:
+ * 
+ * for example ProxyComponents:
+ * 
+ *  - styled(Button)`font-size: 18px;`
+ * 
+ *  - function myButton(props) {
+ *      return <Button className="extra" {...props} />
+ *    }
+ * 
+ * Not proxy:
+ * 
+ * - function myComp(props) {
+ *    return (<>
+ *      <Button {...props} />
+ *      <Popup>
+ *    </>);
+ *   }
+ */
 
 export default class FindComponents extends Command {
   static description = 'describe the command here'
@@ -56,20 +80,40 @@ export default class FindComponents extends Command {
 
     const components: ComponentInfo[] = [];
 
+    const ComponentsCount = [];
+
+    const TOTAL = [];
     for (const project of found) {
       const { projectPath, repoInfo, matchedDependents } = project;
 
       for (const dependent of matchedDependents) {
 
-        await searchComponents({
+        const [t, c] = await searchComponents({
           ...dependent,
           path: path.join(projectPath, dependent.path)
-        }, this)
-        
+        }, this);
+        t && TOTAL.push(t);
+        c && ComponentsCount.push(c);
       }
       
     }
+    
+    this.log();
+    this.log('='.repeat(42));
+    this.log();
+    this.log('Coverage')
+    this.log(TOTAL.join(' '));
+    this.log(mean(TOTAL).toString());
+    this.log(median(TOTAL).toString());
+    this.log();
+    this.log('Components count')
+    this.log(ComponentsCount.join(' '));
+    this.log(mean(ComponentsCount).toString());
+    this.log(median(ComponentsCount).toString());
+    this.log();
+
   }
+
 }
 
 
@@ -79,8 +123,10 @@ async function searchComponents(dependent: Dependent, logger: { log: Command['lo
 
   logger.log(`Searching ${chalk.green(depStr)} components at ${chalk.yellow(name)}: ${chalk.gray(dependentPath)}`);
 
-  await prepareServiceForParsing(dependentPath, matched, logger);
-  await findComponents(dependentPath, matched, logger);
+  // TODO:??
+  // WHY DO WE NEED IT?
+  // await prepareServiceForParsing(dependentPath, matched, logger);
+  return await findComponents(dependentPath, matched, logger);
 }
 
 
@@ -90,9 +136,21 @@ async function prepareServiceForParsing(servicePath: string, deps: Dependency[],
 
   const modulesInstalled = await fs.exists(path.join(servicePath, 'node_modules'));
   if (!modulesInstalled) {
-      const depsToInstall = deps.map(d => `${d.depName}@${d.depVersion}`);
+      const depsToInstall = deps
+        .filter(d => semver.minVersion(d.depVersion))
+        .map(d => `${d.depName}@${d.depVersion}`);
 
-      await installPackages(depsToInstall, servicePath);
+      logger.log('Installing', depsToInstall);
+      if (!depsToInstall.length) {
+        logger.log('Nothing to intall')
+      } else {
+        try {
+          await installPackages(depsToInstall, servicePath);
+        } catch (err) {
+          // @ts-ignore
+          logger.error(err);
+        }
+      }
 
       // // extra install plasma-core If plasma-ui vc plasma-icons has different plasma-core
       // const [ dep ] = deps;
@@ -161,35 +219,124 @@ async function findComponents(servicePath: string, deps: Dependency[], logger: {
       // TODO: generic
       exclude: 'cypress|__test__|node_modules(?!(\/@salutejs|\/@sberdevices)\/plasma)',
       // Does it even work ??
-      // tsConfig: {
-      //     fileName: path.join(servicePath, 'tsconfig.json'),
-      // },
+      tsConfig: {
+          fileName: path.join(servicePath, 'tsconfig.json'),
+      },
   };
+
+  const depNames = deps.map(d => d.depName);
+  logger.log('Searching for', depNames);
 
   logger.log('Start parsing ', serviceSrc);
   logger.log();
 
   const cruiseResult = cruise(paths, cruiseOptions);
   logger.log('parsed all modules of ', servicePath);
-  // console.log(Object.keys(cruiseResult));
 
   const { output } = cruiseResult;
   if (typeof output === 'string') {
     logger.log('WAT???', output);
-    return;
+    return [0,0];
   }
 
 
-  console.log(output.summary);
+
+  type component = {
+    source: string;
+    name: string;
+  }
+
+  // TODO: fuck /css
+  const foundDeps = depNames.concat('@salutejs/plasma-web/css').reduce<Map<string, component[]>>((acc, dep) => {
+    acc.set(dep, []);
+    return acc;
+  }, new Map());
+
+  let hasJSX = 0;
+  for (const m of output.modules) {
+    // TODO: extend CruiseResults types
+    // @ts-ignore
+    if (m.exports && m.exports.hasJSX) {
+      hasJSX++;
+    }
+    if (m.dependencies.length) {
+        for (const dep of m.dependencies) {
+          if (depNames.includes(dep.resolved) || depNames.includes(dep.resolved.replace('/css', ''))) {
+            // @ts-ignore
+            if (dep.imports.reExport || dep.imports.all) {
+              console.log(m.source);
+              // @ts-ignore
+              console.log('WHAT TO DO ??' , dep.imports)
+              continue;
+            }
+            // @ts-ignore
+            for (const part of dep.imports.parts) {
+              const fuck = foundDeps.get(dep.resolved) || foundDeps.get(dep.resolved + '/css');
+              fuck!.push({
+                source: m.source,
+                name: part.imported,
+              })
+            }
+            // @ts-ignore
+            if (dep.imports.defaultName) {
+              const fuck = foundDeps.get(dep.resolved) || foundDeps.get(dep.resolved + '/css');
+              fuck!.push({
+                source: m.source,
+                // @ts-ignore
+                name: dep.imports.defaultName,
+              })
+            }
+        }
+      }
+      // debugger;
+    }
+  }
+
+  // console.log(foundDeps);
+
+  const res = new Set();
+  const react = new Set();
+  const resKeys = [];
+  const plasma = new Map();
+  // console.log(foundDeps);
+  const typoOld = ['Headline1', 'Headline2', 'Headline3', 'Headline4', 'Body1', 'Body2', 'ParagraphText1', 'ParagraphText2', 'Footnote1', 'Footnote2', 'Button1', 'Button2', 'Caption', 'Underline'];
+  const typoNew = ['DsplL', 'DsplM', 'DsplS', 'H1', 'H2', 'H3', 'H4', 'H5', 'BodyL', 'BodyM', 'BodyS', 'BodyXS', 'BodyXXS', 'TextL', 'TextM', 'TextS', 'TextXS'];
+
+  for (const [f, ff] of foundDeps) {
+    if (f.includes('plasma-web') || f.includes('plasma-b2c')) {
+      ff.forEach(a => {
+        let name = a.name;
+        if (typoOld.includes(name)) {
+          name = 'TypoOLD';
+        }
+        if (typoNew.includes(name)) {
+          name = 'Typography';
+        }
+        plasma.set(name, (plasma.get(name) || []).concat(a.source));
+      })
+    }
+    if (f === 'react') {
+      ff.forEach(a => a.source.endsWith('tsx') && react.add(a.source));
+    } else {
+      ff.forEach(a => a.source.endsWith('tsx') && res.add(a.source));
+      resKeys.push(f);
+    }
+  }
+  console.log(resKeys, res.size);
+  // console.log('react', react.size);
+  console.log(plasma);
+  const componentsCount = plasma.size;
+  console.log(componentsCount)
+  console.log('HAS_JSX', hasJSX);
   console.log();
+  const total = Math.round(100 * res.size / hasJSX);
+  console.log('Todal %', Math.round(100 * res.size / hasJSX));
   console.log('=============');
   console.log();
-  for (const m of output.modules) {
-    console.log(m.source);
-    console.log(m.dependencies);
-  }
   
-  // const modules = cruiseResult.output.modules;
+
+  return [total, componentsCount];
+  // const modules = output.modules;
 
   // const plasmaDeps = new Map();
   // for (const m of modules) {
@@ -231,17 +378,17 @@ async function findComponents(servicePath: string, deps: Dependency[], logger: {
   //     }
   // }
 
-  // // console.log('plasma components');
-  // // console.log(components);
-  // // console.log(components.size);
+  // console.log('plasma components');
+  // console.log(components);
+  // console.log(components.size);
 
-  // // console.log('plasma icons');
-  // // console.log(icons);
-  // // console.log(icons.size);
+  // console.log('plasma icons');
+  // console.log(icons);
+  // console.log(icons.size);
 
-  // // console.log('plasma helpers');
-  // // console.log(helpers);
-  // // console.log(helpers.size);
+  // console.log('plasma helpers');
+  // console.log(helpers);
+  // console.log(helpers.size);
 
   // const results = {
   //     components: [...components],
@@ -249,9 +396,9 @@ async function findComponents(servicePath: string, deps: Dependency[], logger: {
   //     helpers: [...helpers],
   // };
 
-  // // const resultsPath = path.join(__dirname, 'out', servicePath.replace('/', '__') + '.json');
+  // const resultsPath = path.join(__dirname, 'out', servicePath.replace('/', '__') + '.json');
 
-  // // fs.writeFileSync(resultsPath, JSON.stringify(results, null, 2));
+  // fs.writeFileSync(resultsPath, JSON.stringify(results, null, 2));
 
   // return results;
 }
