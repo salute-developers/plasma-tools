@@ -9,6 +9,7 @@ import glob, { isDynamicPattern } from 'fast-glob';
 import mm from 'micromatch';
 import semver from 'semver';
 import { getRepoInfo, RepoInfo } from '../utils';
+import { Logger } from '@oclif/core/lib/errors';
 
 /** @example "packages/*", "services/*" */
 type pttrn = string;
@@ -95,7 +96,7 @@ export default class FindDependents extends Command {
   // TODO: logs should be grouped by projectPath
 export async function searchProject(projectPath:string, query: Query, logger: { log: Command['log'] }): Promise<Found> {
     // TODO: exact & exclude
-    const { depNames } = query;
+    const { depNames, exact } = query;
 
     const repoInfo = await getRepoInfo(projectPath);
 
@@ -153,17 +154,21 @@ export async function searchProject(projectPath:string, query: Query, logger: { 
         //     dependentPath,
         //     dependentName,
         // });
+        logger.log(dependentPath);
+        logger.log(dependentName);
 
         const deps: Array<Dependency> = [];
 
-        deps.push(...collectDeps('dep', pkg.dependencies).map(addSemver));
-        deps.push(...collectDeps('devDep', pkg.devDependencies).map(addSemver));
-        deps.push(...collectDeps('peerDep', pkg.peerDependencies).map(addSemver));
+        deps.push(...collectDeps('dep', pkg.dependencies).map(dep => addSemver(dep, logger)));
+        deps.push(...collectDeps('devDep', pkg.devDependencies).map(dep => addSemver(dep, logger)));
+        deps.push(...collectDeps('peerDep', pkg.peerDependencies).map(dep => addSemver(dep, logger)));
 
         const depsMap = deps.reduce((acc, el) => acc.set(el.depName, el), new Map());
         // this.config.debug && console.log(`Collected deps: ${deps.length}`);
 
-        const matched = mm(deps.map(({ depName }) => depName), depNames, { basename: true }).map((depName) => depsMap.get(depName));
+        const matched = exact
+        ? deps.map(({ depName }) => depName).filter(depName => depNames.includes(depName)).map((depName) => depsMap.get(depName))
+        : mm(deps.map(({ depName }) => depName), depNames, { basename: true }).map((depName) => depsMap.get(depName));
 
         matched.length && matchedDependents.push({
           name: dependentName,
@@ -241,16 +246,23 @@ function collectDeps(depType: depType, dependencies?: dependenciesRecord): Array
   }, []) : [];
 }
 
-function addSemver(dep: Dep): Dependency {
+function addSemver(dep: Dep, logger: { log: Command['log'] }): Dependency {
   const { depVersion } = dep;
 
+  // logger.log('^___^');
   const version = semver.validRange(depVersion);
-  const { major, minor, patch, prerelease } = version ? semver.minVersion(version)! : {
+  // logger.log(depVersion, dep.depName);
+  // logger.log(version!, version ? semver.minVersion(version)! : {min: null});
+  // logger.log();
+  // logger.log();
+  const noop = {
     major: null,
     minor: null,
     patch: null,
     prerelease: [],
-  };
+  }
+  // NOTE: semver.minVersion(version) could result to null if range is not valid; exmpl: "@salutejs/plasma-web": ">= 1.114.0 < 1",
+  const { major, minor, patch, prerelease } = version ? semver.minVersion(version) || noop : noop;
 
   return {
       ...dep, 
