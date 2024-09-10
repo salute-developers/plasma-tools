@@ -133,10 +133,10 @@ index 12a7147..cedef53 100644
 +    });
 +}
 diff --git a/node_modules/dependency-cruiser/src/extract/ast-extractors/extract-es6-deps.js b/node_modules/dependency-cruiser/src/extract/ast-extractors/extract-es6-deps.js
-index 2e56e42..5d08cfc 100644
+index 2e56e42..8afe4ee 100644
 --- a/node_modules/dependency-cruiser/src/extract/ast-extractors/extract-es6-deps.js
 +++ b/node_modules/dependency-cruiser/src/extract/ast-extractors/extract-es6-deps.js
-@@ -24,16 +24,108 @@ function pushImportNodeValue(pDependencies) {
+@@ -24,16 +24,128 @@ function pushImportNodeValue(pDependencies) {
    };
  }
  
@@ -151,6 +151,7 @@ index 2e56e42..5d08cfc 100644
          dynamic: false,
          exoticallyRequired: false,
 -      });
++        hasJSX: false,
 +        imports: {
 +            sideEffects: false,
 +            parts: [],
@@ -222,6 +223,10 @@ index 2e56e42..5d08cfc 100644
 +            } else {
 +                const { declaration } = pNode;
 +
++                if (!declaration ) {
++                    return;
++                }
++
 +                if (declaration.type === 'VariableDeclaration') {
 +                    declaration.declarations.forEach(declarator => {
 +                        exports.parts.push({
@@ -245,19 +250,35 @@ index 2e56e42..5d08cfc 100644
 +        }
      }
 +
++  }
++
++  function addJSX(pNode) {
++      if (
++          pNode.property
++          && pNode.property.type === 'Identifier'
++          && pNode.property.name === 'createElement'
++      ) {
++          if (pNode.object
++          && pNode.object.type === 'Identifier'
++          && pNode.object.name === 'React'
++          ) {
++              exports.hasJSX = true;
++          }
++      }
    }
  
    walk.simple(
-@@ -43,6 +135,7 @@ module.exports = function extractES6Dependencies(pAST, pDependencies) {
+@@ -43,6 +155,8 @@ module.exports = function extractES6Dependencies(pAST, pDependencies) {
        ImportExpression: pushImportNodeValue(pDependencies),
        ExportAllDeclaration: pushSourceValue,
        ExportNamedDeclaration: pushSourceValue,
 +      ExportDefaultDeclaration: pushSourceValue,
++      MemberExpression: addJSX,
      },
      // see https://github.com/acornjs/acorn/issues/746
      walk.base
 diff --git a/node_modules/dependency-cruiser/src/extract/get-dependencies.js b/node_modules/dependency-cruiser/src/extract/get-dependencies.js
-index 253e65e..2466bf5 100644
+index 253e65e..fa5427a 100644
 --- a/node_modules/dependency-cruiser/src/extract/get-dependencies.js
 +++ b/node_modules/dependency-cruiser/src/extract/get-dependencies.js
 @@ -53,7 +53,7 @@ function shouldUseSwc(pOptions, pFileName) {
@@ -312,15 +333,24 @@ index 253e65e..2466bf5 100644
        getDependencyUniqueKey
      )
        .sort(compareDeps)
+@@ -230,7 +232,7 @@ module.exports = function getDependencies(
+       );
+   } catch (pError) {
+     throw new Error(
+-      `Extracting dependencies ran afoul of...\n\n  ${pError.message}\n... in ${pFileName}\n\n`
++      `Extracting dependencies ran afoul of...\n\n  ${pError.message}\n ${pError.stack}\n\n... in ${pFileName}\n\n`
+     );
+   }
+ };
 diff --git a/node_modules/dependency-cruiser/src/extract/index.js b/node_modules/dependency-cruiser/src/extract/index.js
-index 77eb897..c03b94b 100644
+index 77eb897..bd7b46c 100644
 --- a/node_modules/dependency-cruiser/src/extract/index.js
 +++ b/node_modules/dependency-cruiser/src/extract/index.js
 @@ -15,13 +15,15 @@ function extractRecursive(
    pTranspileOptions
  ) {
    pVisited.add(pFileName);
-+  const exports = { parts: [], defaultName: false, hasReExports: false };
++  const exports = { parts: [], defaultName: false, hasReExports: false, hasJSX: false };
    const lDependencies =
      pCruiseOptions.maxDepth <= 0 || pDepth < pCruiseOptions.maxDepth
        ? getDependencies(
