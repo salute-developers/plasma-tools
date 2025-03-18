@@ -9,11 +9,12 @@ import glob, { isDynamicPattern } from 'fast-glob';
 import mm from 'micromatch';
 import semver from 'semver';
 import { getRepoInfo, RepoInfo } from '../utils';
+import { Logger } from '@oclif/core/lib/errors';
 
 /** @example "packages/*", "services/*" */
 type pttrn = string;
 
-interface LernaConf {
+export interface LernaConf {
   "packages"?: Array<pttrn>;
 }
 
@@ -39,6 +40,7 @@ export default class FindDependents extends Command {
   static flags = {
     exact: Flags.boolean({ description: 'use exact names of packages, not partial match' }),
     exclude: Flags.string({ description: 'exclude partical names from match' }),
+    excludeProjects: Flags.string({ multiple: true, description: 'exclude projects names from search' }),
     projectsPath: Flags.string({ multiple: true, description: 'path to projects to search dependents', aliases: ['path-to-project', 'project-path'], default: [process.cwd()] }),
   }
 
@@ -55,6 +57,7 @@ export default class FindDependents extends Command {
     // console.error('ISTTY??');
     // console.error(process.stdout.isTTY);
 
+    const { excludeProjects } = flags;
     
     
     const depNames = argv as string[];
@@ -75,16 +78,19 @@ export default class FindDependents extends Command {
         this.log();
     }
 
+    const excludeProjectsSet = new Set(excludeProjects || [])
+
     const possibleProjectsPath = (await Promise.all(projectsPath.map(projectPath => {
       return isDynamicPattern(projectPath) ? glob(projectPath, { deep: 1, onlyDirectories: true }) : projectPath;
     }))).flat()
 
     const found = await Promise.all(possibleProjectsPath.map(projectPath => {
-      return searchProject(projectPath, query, this)
+      return searchProject(projectPath, query, this, excludeProjectsSet)
     }));
 
     this.log();
     this.log('Total found', chalk.green(found.reduce((acc, el) => acc + el.matchedDependents.length, 0)));
+    this.log('TOTal', found.reduce((acc, el)=> acc + el.count, 0))
 
     return found;
   }
@@ -93,13 +99,13 @@ export default class FindDependents extends Command {
 }
 
   // TODO: logs should be grouped by projectPath
-export async function searchProject(projectPath:string, query: Query, logger: { log: Command['log'] }): Promise<Found> {
+export async function searchProject(projectPath:string, query: Query, logger: { log: Command['log'] }, excludeProjects?: Set<string>): Promise<Found & {count: number}> {
     // TODO: exact & exclude
-    const { depNames } = query;
+    const { depNames, exact } = query;
 
     const repoInfo = await getRepoInfo(projectPath);
 
-    const pttrns = [];
+    const pttrns:string[] = [];
 
     const isRootPckg = await fs.pathExists(path.join(projectPath, 'package.json'));
     if (isRootPckg) {
@@ -124,7 +130,8 @@ export async function searchProject(projectPath:string, query: Query, logger: { 
           projectPath,
           repoInfo,
           query,
-          matchedDependents: []
+          matchedDependents: [],
+          count: 0
         };
     }
 
@@ -141,7 +148,7 @@ export async function searchProject(projectPath:string, query: Query, logger: { 
     // AND we could collect first everything, then extract information we need
     // AND we could use a cache here
     const matchedDependents: Dependent[] = [];
-
+let count = 0;
     for (const pkgFileName of pkgFileNamesToProcess) {
         const pkg: PkgJSON = await fs.readJson(pkgFileName);
 
@@ -149,21 +156,46 @@ export async function searchProject(projectPath:string, query: Query, logger: { 
         // @scope/foo-bar => foo-bar
         const dependentName = pkg.name.split('/').pop()!;
 
+        let meta: Meta | null = null;
+        try {
+          meta = await fs.readJSON(path.join(path.dirname(pkgFileName), 'meta.json'));
+        } catch (_) {
+          logger.log(chalk.blue('no meta for'), dependentPath);
+        }
+
+        // TODO: is should be excludeProjects or in some config
+        if (meta?.application?.isFreezed) {
+          logger.log(chalk.red('Exclude'), pkg.name);
+          continue;
+        }
+
+
+        if (excludeProjects?.has(pkg.name) || excludeProjects?.has(dependentName)) {
+          logger.log(chalk.red('Exclude'), pkg.name);
+          continue;
+        }
+
         // this.config.debug && console.log({
         //     dependentPath,
         //     dependentName,
         // });
+        logger.log(dependentPath);
+        logger.log(dependentName);
+        count++;
 
         const deps: Array<Dependency> = [];
 
-        deps.push(...collectDeps('dep', pkg.dependencies).map(addSemver));
-        deps.push(...collectDeps('devDep', pkg.devDependencies).map(addSemver));
-        deps.push(...collectDeps('peerDep', pkg.peerDependencies).map(addSemver));
+        deps.push(...collectDeps('dep', pkg.dependencies).map(dep => addSemver(dep, logger)));
+        deps.push(...collectDeps('devDep', pkg.devDependencies).map(dep => addSemver(dep, logger)));
+        deps.push(...collectDeps('peerDep', pkg.peerDependencies).map(dep => addSemver(dep, logger)));
 
+        // TODO: if depName is in devDep & peerDep, peerDep will win =/
         const depsMap = deps.reduce((acc, el) => acc.set(el.depName, el), new Map());
         // this.config.debug && console.log(`Collected deps: ${deps.length}`);
 
-        const matched = mm(deps.map(({ depName }) => depName), depNames, { basename: true }).map((depName) => depsMap.get(depName));
+        const matched = exact
+        ? deps.map(({ depName }) => depName).filter(depName => depNames.includes(depName)).map((depName) => depsMap.get(depName))
+        : mm(deps.map(({ depName }) => depName), depNames, { basename: true }).map((depName) => depsMap.get(depName));
 
         matched.length && matchedDependents.push({
           name: dependentName,
@@ -175,6 +207,8 @@ export async function searchProject(projectPath:string, query: Query, logger: { 
     
     logger.log();
     logger.log(chalk.gray(projectPath), 'found dependents:', chalk.green(matchedDependents.length));
+    logger.log(chalk.red(count));
+    logger.log(chalk.gray(pkgFileNamesToProcess.length));
 
     // TODO: add flag to write to file or stdout or prettyprint ( write now => --json)
     // TODO: add `clean` command
@@ -189,10 +223,19 @@ export async function searchProject(projectPath:string, query: Query, logger: { 
       projectPath,
       repoInfo,
       query,
-      matchedDependents
+      matchedDependents,
+      count
     }
   }
 
+
+// TODO: remove me
+  interface Meta {
+    application?: {
+      description: string;
+      isFreezed: boolean;
+    }
+  }
 
 export interface Found {
   projectPath: string;
@@ -241,16 +284,23 @@ function collectDeps(depType: depType, dependencies?: dependenciesRecord): Array
   }, []) : [];
 }
 
-function addSemver(dep: Dep): Dependency {
+function addSemver(dep: Dep, logger: { log: Command['log'] }): Dependency {
   const { depVersion } = dep;
 
+  // logger.log('^___^');
   const version = semver.validRange(depVersion);
-  const { major, minor, patch, prerelease } = version ? semver.minVersion(version)! : {
+  // logger.log(depVersion, dep.depName);
+  // logger.log(version!, version ? semver.minVersion(version)! : {min: null});
+  // logger.log();
+  // logger.log();
+  const noop = {
     major: null,
     minor: null,
     patch: null,
     prerelease: [],
-  };
+  }
+  // NOTE: semver.minVersion(version) could result to null if range is not valid; exmpl: "@salutejs/plasma-web": ">= 1.114.0 < 1",
+  const { major, minor, patch, prerelease } = version ? semver.minVersion(version) || noop : noop;
 
   return {
       ...dep, 
@@ -266,7 +316,7 @@ function addSemver(dep: Dep): Dependency {
 type version = string;
 type dependenciesRecord = Record<string, version>;
 
-interface PkgJSON {
+export interface PkgJSON {
     name: string;
 
     devDependencies?: dependenciesRecord;

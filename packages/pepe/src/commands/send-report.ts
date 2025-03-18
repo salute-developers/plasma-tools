@@ -16,6 +16,14 @@ export default class SendReport extends Command {
 
     static examples = ['<%= config.bin %> <%= command.id %>'];
 
+    // TODO: stats:
+    /*
+        SELECT toDate(originalTimestamp), median(minor)
+        FROM default.pepesilvia
+        WHERE ( depName IN ('@sberdevices/plasma-ui', '@salutejs/plasma-ui' ) ) AND depVersion != '*'
+        GROUP BY originalTimestamp
+        ORDER BY originalTimestamp
+    */
     static flags = {
         reportDir: Flags.directory({ description: 'Dir to read reports', aliases: ['report-dir'] }),
         date: Flags.string({
@@ -56,10 +64,12 @@ export default class SendReport extends Command {
             this.exit();
         }
 
+        // TODO: do we need to ovveride reported date here ??
         const recordsToSend = records.map((r) => transformRecord(r));
 
         if (dryRun) {
             this.log(`Records: ${chalk.green(recordsToSend.length)} will be pushed to ${chalk.gray(url)}`);
+            // TODO: timestamp => new Date(num * 1000)
             this.log('Sample: ', recordsToSend[0]);
             this.exit();
         }
@@ -79,7 +89,10 @@ function transformRecord(record: Record & { date: string }): RecordToSend {
 
     const publishTimes = getStableVersionsByDate(depName);
 
-    const time = publishTimes[depVersion];
+    // TODO: we need actual version from package-lock =/
+    const likeVersion = `${major}.${minor}.${patch}`;
+    const time = publishTimes[likeVersion];
+    // console.log(depName, likeVersion, time);
     const publishTimestamp = Math.floor(+new Date(time) / 1000);
     const originalTimestamp = Math.floor(+new Date(date) / 1000);
 
