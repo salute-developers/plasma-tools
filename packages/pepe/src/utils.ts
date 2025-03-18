@@ -105,6 +105,7 @@ async function getRepo(cwd: string) {
 
 /** only for sorted arr */
 export function median(arr: number[]) {
+    arr = [...arr].sort((a, b) => a - b);
     const half = Math.floor(arr.length / 2);
 
     if (arr.length % 2) {
@@ -217,15 +218,17 @@ export function getStableVersionsByDate(packageName: string) {
         // skip canary versions
         const version = semver.parse(key);
 
-        // if (version && version.prerelease.length === 0) {
-        // TODO: why do we have version 2 ??
-        if (version && version.major === 1) {
+        if (version && version.prerelease.length === 0) {
             res[key] = data[key];
         }
-        // }
     });
 
     cache[packageName] = res;
 
     return res;
+}
+
+export async function installPackages(packages: string[], servicePath: string) {
+    const flags = ['--no-save', '--no-package-lock', '--no-fund', '--ignore-scripts', '--no-audit'];
+    await execa('npm', ['install'].concat(flags, packages), { cwd: servicePath, stdio: 'inherit' });
 }
