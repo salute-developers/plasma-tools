@@ -303,7 +303,7 @@ async function findComponents(servicePath: string, deps: Dependency[], logger: {
   const typoNew = ['DsplL', 'DsplM', 'DsplS', 'H1', 'H2', 'H3', 'H4', 'H5', 'BodyL', 'BodyM', 'BodyS', 'BodyXS', 'BodyXXS', 'TextL', 'TextM', 'TextS', 'TextXS'];
 
   for (const [f, ff] of foundDeps) {
-    if (f.includes('plasma-web') || f.includes('plasma-b2c')) {
+    if (f.includes('plasma-web') || f.includes('plasma-b2c') || f.includes('plasma-ui')) {
       ff.forEach(a => {
         let name = a.name;
         if (typoOld.includes(name)) {
@@ -326,6 +326,7 @@ async function findComponents(servicePath: string, deps: Dependency[], logger: {
   // console.log('react', react.size);
   console.log(plasma);
   const componentsCount = plasma.size;
+  console.log([...plasma.keys()]);
   console.log(componentsCount)
   console.log('HAS_JSX', hasJSX);
   console.log();
