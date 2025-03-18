@@ -1,3 +1,16 @@
+# v0.4.1 (Tue Mar 18 2025)
+
+#### 🐛 Bug Fix
+
+- fix: add exclude option [#9](https://github.com/salute-developers/plasma-tools/pull/9) ([@Yeti-or](https://github.com/Yeti-or))
+- fix: ci upgrade ([@Yeti-or](https://github.com/Yeti-or))
+
+#### Authors: 1
+
+- Vasiliy ([@Yeti-or](https://github.com/Yeti-or))
+
+---
+
 # v0.4.0 (Tue Mar 28 2023)
 
 #### 🚀 Enhancement
