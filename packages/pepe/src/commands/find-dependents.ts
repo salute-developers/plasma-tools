@@ -90,6 +90,7 @@ export default class FindDependents extends Command {
 
     this.log();
     this.log('Total found', chalk.green(found.reduce((acc, el) => acc + el.matchedDependents.length, 0)));
+    this.log('TOTal', found.reduce((acc, el)=> acc + el.count, 0))
 
     return found;
   }
@@ -98,7 +99,7 @@ export default class FindDependents extends Command {
 }
 
   // TODO: logs should be grouped by projectPath
-export async function searchProject(projectPath:string, query: Query, logger: { log: Command['log'] }, excludeProjects?: Set<string>): Promise<Found> {
+export async function searchProject(projectPath:string, query: Query, logger: { log: Command['log'] }, excludeProjects?: Set<string>): Promise<Found & {count: number}> {
     // TODO: exact & exclude
     const { depNames, exact } = query;
 
@@ -129,7 +130,8 @@ export async function searchProject(projectPath:string, query: Query, logger: { 
           projectPath,
           repoInfo,
           query,
-          matchedDependents: []
+          matchedDependents: [],
+          count: 0
         };
     }
 
@@ -146,7 +148,7 @@ export async function searchProject(projectPath:string, query: Query, logger: { 
     // AND we could collect first everything, then extract information we need
     // AND we could use a cache here
     const matchedDependents: Dependent[] = [];
-
+let count = 0;
     for (const pkgFileName of pkgFileNamesToProcess) {
         const pkg: PkgJSON = await fs.readJson(pkgFileName);
 
@@ -179,6 +181,7 @@ export async function searchProject(projectPath:string, query: Query, logger: { 
         // });
         logger.log(dependentPath);
         logger.log(dependentName);
+        count++;
 
         const deps: Array<Dependency> = [];
 
@@ -186,6 +189,7 @@ export async function searchProject(projectPath:string, query: Query, logger: { 
         deps.push(...collectDeps('devDep', pkg.devDependencies).map(dep => addSemver(dep, logger)));
         deps.push(...collectDeps('peerDep', pkg.peerDependencies).map(dep => addSemver(dep, logger)));
 
+        // TODO: if depName is in devDep & peerDep, peerDep will win =/
         const depsMap = deps.reduce((acc, el) => acc.set(el.depName, el), new Map());
         // this.config.debug && console.log(`Collected deps: ${deps.length}`);
 
@@ -203,6 +207,8 @@ export async function searchProject(projectPath:string, query: Query, logger: { 
     
     logger.log();
     logger.log(chalk.gray(projectPath), 'found dependents:', chalk.green(matchedDependents.length));
+    logger.log(chalk.red(count));
+    logger.log(chalk.gray(pkgFileNamesToProcess.length));
 
     // TODO: add flag to write to file or stdout or prettyprint ( write now => --json)
     // TODO: add `clean` command
@@ -217,7 +223,8 @@ export async function searchProject(projectPath:string, query: Query, logger: { 
       projectPath,
       repoInfo,
       query,
-      matchedDependents
+      matchedDependents,
+      count
     }
   }
 
