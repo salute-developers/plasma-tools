@@ -7,7 +7,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Install Cypress and dependencies
-RUN npm install --location=global "cypress@10.11.0" && \
+RUN npm install --location=global "cypress@13.17.0" && \
     cypress verify
 
 # Additional packages
@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Set environment variables for Chromium
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium\
-    CYPRESS_RUN_BINARY=/root/.cache/Cypress/10.11.0/Cypress/Cypress
+    CYPRESS_RUN_BINARY=/root/.cache/Cypress/13.17.0/Cypress/Cypress
 
 # Create working directory
 WORKDIR /e2e
